@@ -1,0 +1,30 @@
+name: DeoDap Auto-Fulfillment Bot
+
+on:
+  schedule:
+    # Runs every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch: 
+    # Adds a "Run workflow" button in GitHub so you can test it manually
+
+jobs:
+  fulfill-orders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Puppeteer Bot
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          DEODAP_COOKIES: ${{ secrets.DEODAP_COOKIES }}
+        run: npm start
