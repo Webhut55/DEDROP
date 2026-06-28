@@ -4,6 +4,20 @@ const puppeteer = require('puppeteer');
 const DB_URL = process.env.FIREBASE_DB_URL; // e.g., https://dedrop-store-default-rtdb.firebaseio.com
 const DEODAP_COOKIES = JSON.parse(process.env.DEODAP_COOKIES || '[]');
 
+// Inside your main loop
+for (const order of pendingOrders) {
+    console.log(`Checking payment for: ${order.orderId}...`);
+    
+    // THE NEW "READ" STEP
+    const isPaid = await checkPayment(auth, order.orderId, order.amount);
+    
+    if (isPaid) {
+        console.log("Payment detected. Starting DeoDap process...");
+        await placeDeoDapOrder(order); // Your existing function
+    } else {
+        console.log("Waiting for payment notification...");
+    }
+}
 async function runAutoFulfillment() {
     console.log("Checking Firebase for new orders...");
     
