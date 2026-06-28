@@ -18,6 +18,7 @@ for (const order of pendingOrders) {
         console.log("Waiting for payment notification...");
     }
 }
+import { checkPayment } from './paymentReader.js';
 async function runAutoFulfillment() {
     console.log("Checking Firebase for new orders...");
     
