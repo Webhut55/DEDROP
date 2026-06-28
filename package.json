@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module", 
   "dependencies": {
-    "puppeteer": "^...",
-    "firebase": "^..."
+    "puppeteer": "^22.0.0",
+    "firebase": "^10.0.0"
   }
 }

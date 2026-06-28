@@ -1,114 +1,109 @@
-const puppeteer = require('puppeteer');
+import puppeteer from 'puppeteer';
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, get, update } from 'firebase/database';
+import fs from 'fs';
 
-// Pull secrets from GitHub Actions environment
-const DB_URL = process.env.FIREBASE_DB_URL; // e.g., https://dedrop-store-default-rtdb.firebaseio.com
-const DEODAP_COOKIES = JSON.parse(process.env.DEODAP_COOKIES || '[]');
+// 1. Firebase Configuration
+const firebaseConfig = {
+    databaseURL: "https://dedrop-store-default-rtdb.firebaseio.com"
+};
 
-// Inside your main loop
-for (const order of pendingOrders) {
-    console.log(`Checking payment for: ${order.orderId}...`);
-    
-    // THE NEW "READ" STEP
-    const isPaid = await checkPayment(auth, order.orderId, order.amount);
-    
-    if (isPaid) {
-        console.log("Payment detected. Starting DeoDap process...");
-        await placeDeoDapOrder(order); // Your existing function
-    } else {
-        console.log("Waiting for payment notification...");
-    }
-}
-import { checkPayment } from './paymentReader.js';
-// ... other imports
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-async function main() {
-    // Your existing logic here
-    const isPaid = await checkPayment(auth, order.orderId, order.amount);
-    
-    if (isPaid) {
-        // Proceed with fulfillment
+// 2. Helper to Load DeoDap Cookies
+async function loadCookies(page) {
+    try {
+        const cookieString = fs.readFileSync('./deodap.in.cookies.json', 'utf8');
+        const cookies = JSON.parse(cookieString);
+        await page.setCookie(...cookies);
+        console.log("DeoDap session cookies loaded successfully.");
+    } catch (err) {
+        console.log("No existing cookies found or failed to load them:", err.message);
     }
 }
 
-// Execute the function
-main().catch(err => {
-    console.error("Bot failed:", err);
-    process.exit(1);
-});
+// 3. Main Automation Logic
+async function fulfillOrders() {
+    console.log("Fetching pending orders from Firebase...");
+    const ordersRef = ref(db, 'orders');
+    const snapshot = await get(ordersRef);
 
-    // Filter for orders you manually marked as ready
-    const pendingOrders = Object.entries(data).filter(([key, order]) => 
-        order.status === "Processing DeoDap Order"
-    );
-
-    if (pendingOrders.length === 0) {
-        console.log("No pending orders to process. Going back to sleep.");
+    if (!snapshot.exists()) {
+        console.log("No orders found in database.");
         return;
     }
 
-    console.log(`Found ${pendingOrders.length} orders to process. Launching browser...`);
-
-    // 2. Launch Puppeteer
+    const orders = snapshot.val();
+    
+    // Launch Headless Browser for GitHub Actions compatibility
     const browser = await puppeteer.launch({
-        headless: true, // Runs invisibly in the cloud
+        headless: "new",
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-
     const page = await browser.newPage();
 
-    // 3. Inject Cookies to bypass DeoDap Login/OTP
-    if (DEODAP_COOKIES.length > 0) {
-        await page.setCookie(...DEODAP_COOKIES);
-        console.log("Session cookies injected.");
-    } else {
-        console.error("WARNING: No cookies provided. Login will likely fail.");
-    }
+    // Set viewport so elements are clickable
+    await page.setViewport({ width: 1280, height: 800 });
 
-    // 4. Process Each Order
-    for (const [firebaseKey, order] of pendingOrders) {
-        try {
-            console.log(`Processing Order ID: ${order.orderId} for ${order.customer.name}`);
+    for (const id in orders) {
+        const order = orders[id];
 
-            // Go to the specific DeoDap product page
-            // Note: You should store the actual DeoDap product URL in your Firebase products node
-            await page.goto(order.product.deodapUrl || 'https://deodap.com/', { waitUntil: 'networkidle2' });
+        // Process only orders that are verified but not yet sent to the supplier
+        if (order.status === 'Verified' && !order.supplierProcessed) {
+            console.log(`Processing Order ID: ${id} for product: ${order.productName}`);
 
-            // --- DEODAP AUTOMATION STEPS ---
-            // *IMPORTANT*: You must replace these placeholder selectors with DeoDap's actual HTML selectors
-            
-            // Click Add to Cart
-            await page.waitForSelector('.add-to-cart-btn-class'); // REPLACE THIS
-            await page.click('.add-to-cart-btn-class');
-            
-            // Go to Checkout
-            await page.goto('https://deodap.com/checkout', { waitUntil: 'networkidle2' });
+            try {
+                // Navigate to DeoDap and inject auth session
+                await page.goto('https://deodap.in', { waitUntil: 'networkidle2' });
+                await loadCookies(page);
+                await page.reload({ waitUntil: 'networkidle2' });
 
-            // Fill Customer Details
-            await page.waitForSelector('input[name="shipping_name"]'); // REPLACE THIS
-            await page.type('input[name="shipping_name"]', order.customer.name);
-            await page.type('input[name="shipping_phone"]', order.customer.phone);
-            await page.type('input[name="shipping_address"]', order.customer.address);
+                // Go directly to the product page
+                if (order.productUrl) {
+                    await page.goto(order.productUrl, { waitUntil: 'networkidle2' });
+                } else {
+                    console.log(`Missing product URL for order ${id}, skipping...`);
+                    continue;
+                }
 
-            // Click Pay / Finalize Order using wallet balance
-            // await page.click('.confirm-payment-btn'); // UNCOMMENT AND REPLACE THIS when ready
+                // Click "Buy Now" or "Add to Cart"
+                const buyNowSelector = 'button[name="add"], .product-form__submit, #BuyNow'; 
+                await page.waitForSelector(buyNowSelector, { timeout: 5000 });
+                await page.click(buyNowSelector);
+                await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
-            console.log(`Order ${order.orderId} placed successfully on DeoDap!`);
+                // Fill in customer shipping details at checkout page
+                await page.waitForSelector('input[name="checkout[shipping_address][first_name]"]', { timeout: 5000 });
+                await page.type('input[name="checkout[shipping_address][first_name]"]', order.customerName || '');
+                await page.type('input[name="checkout[shipping_address][address1]"]', order.address || '');
+                await page.type('input[name="checkout[shipping_address][city]"]', order.city || '');
+                await page.type('input[name="checkout[shipping_address][zip]"]', order.zipCode || '');
+                await page.type('input[name="checkout[shipping_address][phone]"]', order.phone || '');
 
-            // 5. Update Firebase Status to 'Shipped'
-            await fetch(`${DB_URL}/orders/${firebaseKey}.json`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: "Shipped" })
-            });
-            console.log(`Updated tracker for ${order.orderId} to Shipped.`);
+                // Final step logging
+                console.log(`Fulfillment steps simulated successfully for Order ${id}`);
 
-        } catch (error) {
-            console.error(`Failed to process order ${order.orderId}:`, error);
+                // Update Firebase status so it doesn't loop over the same order next time
+                await update(ref(db, `orders/${id}`), {
+                    supplierProcessed: true,
+                    status: 'Processing'
+                });
+                console.log(`Order ${id} marked as Processing in Firebase.`);
+
+            } catch (error) {
+                console.error(`Failed to process order ${id}:`, error.message);
+            }
         }
     }
-  
-    // 6. Cleanup
-    await browser.close();
-    console.log("All tasks complete. Browser closed.");
 
-runAutoFulfillment();
+    await browser.close();
+    console.log("Automation run complete.");
+    process.exit(0);
+}
+
+// Execute logic
+fulfillOrders().catch(err => {
+    console.error("Critical automation failure:", err);
+    process.exit(1);
+});
