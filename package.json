@@ -1,15 +1,9 @@
 {
   "name": "dedrop-auto-bot",
   "version": "1.0.0",
-  "description": "Automated DeoDap dropshipping bot",
-  "main": "bot.js",
-  "scripts": {
-    "start": "node bot.js"
-  },
+  "type": "module", 
   "dependencies": {
-    "puppeteer": "^22.0.0"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+    "puppeteer": "^...",
+    "firebase": "^..."
+  }
 }

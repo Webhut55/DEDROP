@@ -19,17 +19,22 @@ for (const order of pendingOrders) {
     }
 }
 import { checkPayment } from './paymentReader.js';
-async function runAutoFulfillment() {
-    console.log("Checking Firebase for new orders...");
+// ... other imports
+
+async function main() {
+    // Your existing logic here
+    const isPaid = await checkPayment(auth, order.orderId, order.amount);
     
-    // 1. Fetch orders from Firebase
-    const response = await fetch(`${DB_URL}/orders.json`);
-    const data = await response.json();
-    
-    if (!data) {
-        console.log("Database is empty. Exiting.");
-        return;
+    if (isPaid) {
+        // Proceed with fulfillment
     }
+}
+
+// Execute the function
+main().catch(err => {
+    console.error("Bot failed:", err);
+    process.exit(1);
+});
 
     // Filter for orders you manually marked as ready
     const pendingOrders = Object.entries(data).filter(([key, order]) => 
@@ -101,10 +106,9 @@ async function runAutoFulfillment() {
             console.error(`Failed to process order ${order.orderId}:`, error);
         }
     }
-
+  
     // 6. Cleanup
     await browser.close();
     console.log("All tasks complete. Browser closed.");
-}
 
 runAutoFulfillment();
