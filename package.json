@@ -1,7 +1,10 @@
 {
   "name": "dedrop-auto-bot",
   "version": "1.0.0",
-  "type": "module", 
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js"
+  },
   "dependencies": {
     "puppeteer": "^22.0.0",
     "firebase": "^10.0.0"

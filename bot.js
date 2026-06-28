@@ -42,16 +42,14 @@ async function fulfillOrders() {
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
-
-    // Set viewport so elements are clickable
     await page.setViewport({ width: 1280, height: 800 });
 
     for (const id in orders) {
         const order = orders[id];
 
-        // Process only orders that are verified but not yet sent to the supplier
+        // Process only orders that are marked Verified but not yet processed by supplier
         if (order.status === 'Verified' && !order.supplierProcessed) {
-            console.log(`Processing Order ID: ${id} for product: ${order.productName}`);
+            console.log(`Processing Order ID: ${id} for product: ${order.productName || id}`);
 
             try {
                 // Navigate to DeoDap and inject auth session
@@ -59,7 +57,6 @@ async function fulfillOrders() {
                 await loadCookies(page);
                 await page.reload({ waitUntil: 'networkidle2' });
 
-                // Go directly to the product page
                 if (order.productUrl) {
                     await page.goto(order.productUrl, { waitUntil: 'networkidle2' });
                 } else {
@@ -81,10 +78,9 @@ async function fulfillOrders() {
                 await page.type('input[name="checkout[shipping_address][zip]"]', order.zipCode || '');
                 await page.type('input[name="checkout[shipping_address][phone]"]', order.phone || '');
 
-                // Final step logging
                 console.log(`Fulfillment steps simulated successfully for Order ${id}`);
 
-                // Update Firebase status so it doesn't loop over the same order next time
+                // Update Firebase status so it doesn't process again
                 await update(ref(db, `orders/${id}`), {
                     supplierProcessed: true,
                     status: 'Processing'
